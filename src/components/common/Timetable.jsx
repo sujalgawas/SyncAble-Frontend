@@ -1,59 +1,66 @@
-
+// src/components/common/Timetable.jsx
 import React from "react";
+import { Button } from "react-bootstrap";
 
-const TIMESLOTS = [
-  "09:00 – 10:00",
-  "10:00 – 11:00",
-  "11:00 – 12:00",
-  "12:00 – 01:00",
-  "01:00 – 02:00",
-  "02:00 – 03:00",
-  "03:00 – 04:00"
-];
+const Timetable = ({ customTimetable, title = "timetable" }) => {
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const exportToCSV = () => {
+    if (!customTimetable) return;
 
-const Timetable = ({ timetable }) => {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const times = Object.keys(customTimetable.Mon || {}); // assumes Mon has all rows
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += ["Time", ...days].join(",") + "\r\n";
+
+    times.forEach((idx) => {
+      const row = [idx];
+      days.forEach((day) => {
+        row.push(customTimetable[day][idx] || "");
+      });
+      csvContent += row.join(",") + "\r\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${title}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <section className="timetable-example" aria-labelledby="demo-title">
-      <div className="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              {DAYS.map((day) => (
-                <th key={day}>{day.slice(0,3)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {TIMESLOTS.map((slot, index) => {
-              // For lunch break row
-              if (slot === "12:00 – 01:00") {
-                return (
-                  <tr key={slot} style={{ background: 'rgba(255,255,255,0.06)', fontStyle: 'italic' }}>
-                    <th>{slot}</th>
-                    <td colSpan="5">Lunch Break</td>
-                  </tr>
-                );
-              }
-
-              return (
-                <tr key={slot}>
-                  <th>{slot}</th>
-                  {DAYS.map((day) => (
-                    <td key={day}>
-                      {timetable?.[day]?.[slot] || "-"}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div className="table-wrapper">
+      <Button variant="success" className="mb-2" onClick={exportToCSV}>
+        Export Timetable
+      </Button>
+      <table className="table table-bordered text-center">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Mon</th>
+            <th>Tue</th>
+            <th>Wed</th>
+            <th>Thu</th>
+            <th>Fri</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customTimetable &&
+            Object.keys(customTimetable.Mon).map((time, idx) => (
+              <tr key={idx}>
+                <th>{time}</th>
+                <td>{customTimetable.Mon[time]}</td>
+                <td>{customTimetable.Tue[time]}</td>
+                <td>{customTimetable.Wed[time]}</td>
+                <td>{customTimetable.Thu[time]}</td>
+                <td>{customTimetable.Fri[time]}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
   );
 };
 

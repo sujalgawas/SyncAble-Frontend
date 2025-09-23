@@ -17,7 +17,7 @@ const Hero = () => {
       </p>
       <div className="hero-actions d-flex justify-content-center gap-3">
         <Button variant="primary" onClick={() => navigate('/auth?role=student')}>Student Portal</Button>
-        <Button variant="outline-light" onClick={() => navigate('/auth?role=teacher')}>Teacher Portal</Button>
+        <Button variant="outline-light" className='hero-button' onClick={() => navigate('/auth?role=teacher')}>Teacher Portal</Button>
 
 
       </div>

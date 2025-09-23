@@ -30,7 +30,7 @@ const StudentDashboard = () => {
           <h5>📅 Weekly Timetable</h5>
         </Card.Header>
         <Card.Body>
-          <Timetable customTimetable={timetable} />
+          <Timetable customTimetable={timetable} title={`${student.name}-timetable`} />
         </Card.Body>
       </Card>
 
