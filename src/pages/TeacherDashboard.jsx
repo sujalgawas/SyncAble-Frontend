@@ -17,8 +17,10 @@ const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { timetable, setTimetable, TIMESLOTS } = useContext(TimetableContext);
 
-  const [teacherName, setTeacherName] = useState("Prof. Jane Smith");
+  // Teacher identity (in real app comes from auth)
+  const [teacherName] = useState("Prof. Jane Smith");
 
+  // Subjects the teacher can teach: [{ name: "DBMS", hours: 2 }, ...]
   const [subjects, setSubjects] = useState(() => {
     try {
       const raw = localStorage.getItem("teacher_subjects");
@@ -30,16 +32,33 @@ const TeacherDashboard = () => {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newSubjectHours, setNewSubjectHours] = useState(1);
 
+  // Availability keyed by timeslot string, true = available at that timeslot (any day)
   const [availability, setAvailability] = useState(() => {
     const map = {};
-    TIMESLOTS.forEach((t) => (map[t] = false));
+    (TIMESLOTS || []).forEach((t) => (map[t] = false));
     return map;
   });
 
   const [notifications, setNotifications] = useState([]);
 
+  // Ensure availability gets initialized if TIMESLOTS becomes available later
   useEffect(() => {
-    localStorage.setItem("teacher_subjects", JSON.stringify(subjects));
+    if (!TIMESLOTS) return;
+    setAvailability((prev) => {
+      const next = {};
+      TIMESLOTS.forEach((t) => {
+        next[t] = prev[t] ?? false;
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [TIMESLOTS]);
+
+  // Persist subjects locally for dev convenience
+  useEffect(() => {
+    try {
+      localStorage.setItem("teacher_subjects", JSON.stringify(subjects));
+    } catch {}
   }, [subjects]);
 
   const handleLogout = () => navigate("/");
@@ -69,75 +88,99 @@ const TeacherDashboard = () => {
     setAvailability((prev) => ({ ...prev, [slot]: !prev[slot] }));
   };
 
+  // Helper: build a fresh empty timetable structure if needed
+  const makeEmptyTimetable = () => {
+    const slotCount = (TIMESLOTS && TIMESLOTS.length) || 0;
+    const build = {};
+    DAYS.forEach((d) => {
+      build[d] = Array(slotCount).fill("");
+    });
+    return build;
+  };
+
+  // Main: improved assignment logic
   const handleGenerateTimetable = () => {
     if (!subjects.length) {
       alert("Add at least one subject first.");
       return;
     }
-
-    const newTimetable = {
-      Mon: [...timetable.Mon],
-      Tue: [...timetable.Tue],
-      Wed: [...timetable.Wed],
-      Thu: [...timetable.Thu],
-      Fri: [...timetable.Fri],
-    };
-
-    const availableSlots = [];
-    DAYS.forEach((day) => {
-      TIMESLOTS.forEach((slot, idx) => {
-        if (slot.toLowerCase().includes("12:00")) return; // skip lunch
-        if (!availability[slot]) return;
-        if (newTimetable[day][idx] === "") availableSlots.push({ day, idx, slot });
-      });
-    });
-
-    if (availableSlots.length === 0) {
-      alert("No available slots selected. Mark availability first.");
+    if (!TIMESLOTS || TIMESLOTS.length === 0) {
+      alert("Timeslots not configured.");
       return;
     }
 
-    const assignments = [];
-    let slotPointer = 0;
+    // Clone or create timetable
+    const newTimetable = {};
+    if (timetable && DAYS.every((d) => Array.isArray(timetable[d]))) {
+      DAYS.forEach((d) => (newTimetable[d] = [...timetable[d]]));
+    } else {
+      Object.assign(newTimetable, makeEmptyTimetable());
+    }
 
+    const assignments = [];
+    const shortages = [];
+
+    // For each subject allocate 'hours' sessions across days & timeslots (earliest-first)
     for (const subj of subjects) {
       let sessionsNeeded = Number(subj.hours) || 0;
-      while (sessionsNeeded > 0 && slotPointer < availableSlots.length) {
-        const { day, idx } = availableSlots[slotPointer];
-        if (newTimetable[day][idx] === "") {
-          newTimetable[day][idx] = subj.name;
-          assignments.push(`${subj.name} -> ${day} ${TIMESLOTS[idx]}`);
-          sessionsNeeded--;
+
+      for (let dayIdx = 0; dayIdx < DAYS.length && sessionsNeeded > 0; dayIdx++) {
+        const day = DAYS[dayIdx];
+
+        for (let slotIdx = 0; slotIdx < TIMESLOTS.length && sessionsNeeded > 0; slotIdx++) {
+          const slotLabel = TIMESLOTS[slotIdx];
+
+          // Skip lunch-like slot if your timeslot string contains '12:00' or lunch you added
+          if (slotLabel.toLowerCase().includes("12:00") && slotLabel.toLowerCase().includes("01:00")) {
+            continue;
+          }
+
+          // teacher must be available at that timeslot (same time all days)
+          if (!availability[slotLabel]) continue;
+
+          // slot must be currently empty
+          if (!newTimetable[day][slotIdx]) {
+            newTimetable[day][slotIdx] = subj.name; // storing subject string; change if you want object
+            assignments.push(`${subj.name} -> ${day} ${slotLabel} (slot ${slotIdx})`);
+            sessionsNeeded--;
+          }
         }
-        slotPointer++;
       }
 
       if (sessionsNeeded > 0) {
-        setNotifications((prev) => [
-          `⚠️ Could not schedule ${sessionsNeeded} session(s) for ${subj.name} (not enough free available slots).`,
-          ...prev,
-        ]);
+        shortages.push({ subject: subj.name, missing: sessionsNeeded });
       }
     }
 
+    // Persist updated shared timetable
     setTimetable(newTimetable);
 
+    // Notifications
     if (assignments.length > 0) {
       setNotifications((prev) => [
         `✅ Assigned ${assignments.length} slot(s): ${assignments.join("; ")}`,
+        ...assignments.map((a) => a),
         ...prev,
       ]);
-      assignments.slice(0, 6).forEach((a) => {
-        setNotifications((prev) => [a, ...prev]);
-      });
-    } else {
-      setNotifications((prev) => [`No assignments made.`, ...prev]);
     }
+    if (shortages.length > 0) {
+      const msgs = shortages.map((s) => `⚠️ Could not schedule ${s.missing} session(s) for ${s.subject}`);
+      setNotifications((prev) => [...msgs, ...prev]);
+    }
+    if (assignments.length === 0 && shortages.length === 0) {
+      setNotifications((prev) => ["No assignments made.", ...prev]);
+    }
+  };
+
+  const clearAvailability = () => {
+    const reset = {};
+    (TIMESLOTS || []).forEach((t) => (reset[t] = false));
+    setAvailability(reset);
   };
 
   return (
     <div className="container my-5">
-      <h2 className="mb-4">Welcome, {teacherName}</h2>
+      <h2 className="mb-4 text-center">Welcome, {teacherName}</h2>
 
       <Row className="mb-4">
         <Col md={6}>
@@ -151,7 +194,8 @@ const TeacherDashboard = () => {
                 {subjects.map((s, idx) => (
                   <ListGroup.Item key={idx} className="d-flex justify-content-between align-items-center">
                     <div>
-                      <strong>{s.name}</strong> <span className="text-muted">({s.hours} session(s)/week)</span>
+                      <strong>{s.name}</strong>{" "}
+                      <span className="text-muted">({s.hours} session(s)/week)</span>
                     </div>
                     <Button size="sm" variant="outline-danger" onClick={() => removeSubject(idx)}>
                       Remove
@@ -197,13 +241,13 @@ const TeacherDashboard = () => {
             <Card.Body>
               <Form>
                 <Row>
-                  {TIMESLOTS.map((slot) => (
+                  {(TIMESLOTS || []).map((slot) => (
                     <Col xs={6} md={12} key={slot} className="mb-2">
                       <Form.Check
                         type="checkbox"
                         id={`avail-${slot}`}
                         label={slot}
-                        checked={availability[slot]}
+                        checked={availability[slot] || false}
                         onChange={() => toggleAvailability(slot)}
                       />
                     </Col>
@@ -212,17 +256,10 @@ const TeacherDashboard = () => {
               </Form>
 
               <div className="mt-3">
-                <Button variant="primary" onClick={handleGenerateTimetable}>
+                <Button variant="primary" onClick={handleGenerateTimetable} className="me-2">
                   Generate Timetable
-                </Button>{" "}
-                <Button
-                  variant="outline-secondary"
-                  onClick={() => {
-                    const reset = {};
-                    TIMESLOTS.forEach((t) => (reset[t] = false));
-                    setAvailability(reset);
-                  }}
-                >
+                </Button>
+                <Button variant="outline-secondary" onClick={clearAvailability}>
                   Clear Availability
                 </Button>
               </div>
@@ -236,6 +273,7 @@ const TeacherDashboard = () => {
           <h5>📅 Current Shared Timetable</h5>
         </Card.Header>
         <Card.Body>
+          {/* Timetable component expects the context timetable shape (Mon..Fri arrays) */}
           <Timetable customTimetable={timetable} title={`${teacherName}-timetable`} />
         </Card.Body>
       </Card>
@@ -252,7 +290,7 @@ const TeacherDashboard = () => {
         </ListGroup>
       </Card>
 
-      <div className="mb-5">
+      <div className="mb-5 text-center">
         <Button variant="danger" onClick={handleLogout}>
           Logout
         </Button>
