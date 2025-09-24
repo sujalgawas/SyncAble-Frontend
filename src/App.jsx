@@ -6,6 +6,7 @@ import Auth from "./pages/Auth";
 import StudentDashboard from "./pages/StudentDashboard";
 import TeacherDashboard from "./pages/TeacherDashboard";
 import { TimetableProvider } from "./context/TimetableContext";
+import TimetableEditor from "./pages/TimetableEditor";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/auth" element={<Auth />} />
             <Route path="/student" element={<StudentDashboard />} />
             <Route path="/teacher" element={<TeacherDashboard />} />
+            <Route path="/timetable-editor" element={<TimetableEditor />} />
           </Routes>
         </main>
         <Footer />
